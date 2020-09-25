@@ -16,3 +16,7 @@ dist/
 *__pycache__/
 qtapps/sandbox*
 *.iml
+
+.vscode/
+.coverage
+

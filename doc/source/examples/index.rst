@@ -16,6 +16,14 @@ Network Theory
     
     networktheory/*
 
+Network Noise Analysis
+----------------------
+.. toctree::
+    :maxdepth: 1
+    :glob:
+
+    noisynetworks/*
+
 Matching
 ------------------
 .. toctree::
@@ -69,7 +77,15 @@ Internals
     :glob:
     
     internals/*
-    
+
+Instrument Control
+------------------
+.. toctree::
+    :maxdepth: 1
+    :glob:
+
+    instrumentcontrol/*
+
 Interactive
 ------------------
 

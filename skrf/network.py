@@ -20,6 +20,16 @@ Network Class
 
     Network
 
+Building Network
+----------------
+
+.. autosummary::
+    :toctree: generated/
+
+    Network.from_z
+    Network.from_y
+    Network.from_s
+
 Network Representations
 ============================
 
@@ -45,6 +55,15 @@ Connecting Networks
     de_embed
     flip
 
+Connecting Networks with Noise Analysis
+=======================================
+
+.. autosummary::
+    :toctree: generated/
+
+    cascade_2port
+    parallel_parallel_2port
+    series_series_2port
 
 
 Interpolation and Concatenation Along Frequency Axis
@@ -71,8 +90,6 @@ Combining Networks
     n_twoports_2_nport
     concat_ports
 
-
-
 IO
 ====
 
@@ -94,6 +111,18 @@ Noise
     Network.add_noise_polar
     Network.add_noise_polar_flatband
     Network.multiply_noise
+    Network.noise_source
+
+Network Noise Covariance Representations
+========================================
+.. autosummary::
+    :toctree: generated/
+
+    Network.cs
+    Network.ct
+    Network.cz
+    Network.cy
+    Network.ca
 
 
 Supporting Functions
@@ -176,6 +205,8 @@ from .time import time_gate
 
 from .constants import ZERO, K_BOLTZMANN, T0
 from .constants import S_DEFINITIONS, S_DEF_DEFAULT
+
+from . import is_alt_ops
 
 
 #from matplotlib import cm
@@ -344,9 +375,11 @@ class Network(object):
             its a str
         comments : str
             Comments associated with the Network
-        s_def : str -> s_def : ['power','pseudo']
+        s_def : str -> s_def :  can be: 'power', 'pseudo' or 'traveling'
             Scattering parameter definition : 'power' for power-waves definition, 
-            'pseudo' for pseudo-waves definition. Default is 'power'.
+            'pseudo' for pseudo-waves definition. 
+            'traveling' corresponds to the initial implementation. 
+            Default is 'power'.
             NB: results are the same for real-valued characteristic impedances.
         \*\*kwargs :
             key word arguments can be used to assign properties of the
@@ -525,22 +558,64 @@ class Network(object):
         me.a = a
         return me
 
-    @classmethod
-    def from_series_rlc(cls, r, l, c, frequency):
-        pass
-
-    @classmethod
-    def from_shunt_rlc(cls, r, l, c, frequency):
-        pass
 
     def noise_source(self, source='passive', T0=None):
+        '''
+        Set the :class:`.NetworkNoiseCov` within :class:`Network` to model noise.
+
+        To model noise, use this method to set the noise covariance matrix within the network.
+
+        Parameters
+        -----------
+        source : :class:`.NetworkNoiseCov` or string
+            Sets the noise covariance matrix for the network. The noise covariance matrix is stored within
+            a :class:`.NetworkNoiseCov` object. The matrix can be used to model all kinds of noise (e.g., thermal,
+            shot, flicker, etc.). However, if the network is passive, `source` may be set to source='passive'. Doing so
+            will use the matrix `s` within :class:`Network` to calculate the covariance matrix for thermal noise.
+            If you don't want the network to produce any noise, and yet use the network in noise calculations, you can
+            pass source='none'.
+
+        T0 : 
+            The physical temperature of the network. Leave unset for room temperature.
+
+        Example
+        --------
+        Create a network and set its noise source manually: 
+
+        >>> frequency = rf.Frequency(start=1000, stop=2000, npoints=10, unit='MHz')
+        >>> ovec = npy.ones(len(frequency))
+        >>> zvec = npy.zeros(len(frequency))
+        >>> R = 200*ovec
+        >>> R_shunt_z = rf.network_array([[R, R], [R, R]])
+        >>> R_shunt_cov = 4*K_BOLTZMANN*T0*npy.real(R_shunt_z)
+        >>> ntwk = rf.Network.from_z(R_shunt_z)
+        >>> ntwk_cz = rf.NetworkNoiseCov(R_shunt_cov, form='z')
+        >>> ntwk.noise_source(ntwk_cz)
+
+        Create a network and set its noise source using source='passive':
+
+        >>> frequency = rf.Frequency(start=1000, stop=2000, npoints=10, unit='MHz')
+        >>> ovec = npy.ones(len(frequency))
+        >>> zvec = npy.zeros(len(frequency))
+        >>> R = 200*ovec
+        >>> R_shunt_z = rf.network_array([[R, R], [R, R]])
+        >>> ntwk = rf.Network.from_z(R_shunt_z)
+        >>> ntwk.noise_source('passive')
+
+
+        '''
         if isinstance(source, string_types):
             if source == 'passive':
                 if T0:
                     self.T0 = T0
                 self.noise_cov = NetworkNoiseCov.from_passive_s(self.s, self.f, T0=self.T0)
+            elif source == 'none':
+                #TODO: Clean this up
+                self.noise_cov = NetworkNoiseCov.from_passive_s(npy.zeros(shape=self.s.shape), self.f, T0=self.T0) 
+                self.noise_cov.mat_vec = npy.zeros(shape=self.s.shape)
         elif isinstance(source, NetworkNoiseCov):
             self._validate_covariance_setter(source.mat_vec)
+            self.noise
             self.noise_cov = source
         else:
             raise ValueError("Input must be the string 'passive' or a NetworkNoiseCov object, otherwise use setters 'cs', 'ct', 'cz', etc.")
@@ -612,17 +687,32 @@ class Network(object):
     def __mul__(self, other):
         """
         Element-wise complex multiplication of s-matrix
+
+        if skrf.alternative_ops() has been set, this operator performs
+        cascade_2port operation.
         """
-        result = self.copy()
 
-        if isinstance(other, Network):
-            self.__compatable_for_scalar_operation_test(other)
-            result.s = self.s * other.s
+        # see skrf __init__.py for is_alt_ops() usage
+        if not is_alt_ops():
+            result = self.copy()
+
+            if isinstance(other, Network):
+                self.__compatable_for_scalar_operation_test(other)
+                result.s = self.s * other.s
+            else:
+                # other may be an array or a number
+                result.s = self.s * npy.array(other).reshape(-1, self.nports, self.nports)
+
+            return result
+
         else:
-            # other may be an array or a number
-            result.s = self.s * npy.array(other).reshape(-1, self.nports, self.nports)
+            return cascade_2port(self, other)
 
-        return result
+    def __or__(self, other):
+        """parallel_parallel_2port operator
+
+        """
+        return parallel_parallel_2port(self, other)
 
     def __rmul__(self, other):
         """
@@ -643,17 +733,27 @@ class Network(object):
     def __add__(self, other):
         """
         Element-wise complex addition of s-matrix
+
+        if skrf.alternative_ops() has been set, this operator performs
+        series_series_2port operation.
+
         """
-        result = self.copy()
+        # see skrf __init__.py for is_alt_ops() usage
+        if not is_alt_ops():
+            
+            result = self.copy()
 
-        if isinstance(other, Network):
-            self.__compatable_for_scalar_operation_test(other)
-            result.s = self.s + other.s
+            if isinstance(other, Network):
+                self.__compatable_for_scalar_operation_test(other)
+                result.s = self.s + other.s
+            else:
+                # other may be an array or a number
+                result.s = self.s + npy.array(other).reshape(-1, self.nports, self.nports)
+
+            return result
+
         else:
-            # other may be an array or a number
-            result.s = self.s + npy.array(other).reshape(-1, self.nports, self.nports)
-
-        return result
+            return series_series_2port(self, other)
 
     def __radd__(self, other):
         """
@@ -1154,8 +1254,7 @@ class Network(object):
         ------------
         .. [#] http://en.wikipedia.org/wiki/impedance_parameters
         """
-        z = s2z(self.s, self.z0)
-        return z2a(z)
+        return s2a(self.s, self.z0)
 
     @a.setter
     def a(self, value):
@@ -1164,7 +1263,24 @@ class Network(object):
 
     @property
     def cs(self):
-        return self.noise_cov.get_cs(self.s)
+        """
+        Noise covariance matrix in s-form
+
+        Returns
+        ---------
+        cs : complex :class:`numpy.ndarray` of shape `fxnxn`
+                noise covariance matrix as a function of frequency
+
+        See Also
+        ------------
+        ct
+        cy
+        cz
+        ca
+
+        """
+        ntwkNoiseCov = self.noise_cov.get_cs(self.s)
+        return ntwkNoiseCov.cc
 
     @cs.setter
     def cs(self, value):
@@ -1173,7 +1289,24 @@ class Network(object):
 
     @property
     def ct(self):
-        return self.noise_cov.get_ct(self.t)
+        """
+        Noise covariance matrix in t-form
+
+        Returns
+        ---------
+        ct : complex :class:`numpy.ndarray` of shape `fxnxn`
+                noise covariance matrix as a function of frequency
+
+        See Also
+        ------------
+        cs
+        cy
+        cz
+        ca
+
+        """
+        ntwkNoiseCov = self.noise_cov.get_ct(self.t)
+        return ntwkNoiseCov.cc
 
     @ct.setter
     def ct(self, value):
@@ -1182,16 +1315,50 @@ class Network(object):
 
     @property
     def cz(self):
-        return self.noise_cov.get_cz(self.z)
+        """
+        Noise covariance matrix in z-form
+
+        Returns
+        ---------
+        cz : complex :class:`numpy.ndarray` of shape `fxnxn`
+                noise covariance matrix as a function of frequency
+
+        See Also
+        ------------
+        cs
+        ct
+        cy
+        ca
+
+        """
+        ntwkNoiseCov = self.noise_cov.get_cz(self.z)
+        return ntwkNoiseCov.cc
 
     @cz.setter
-    def cz(self, s):
+    def cz(self, value):
        self._validate_covariance_setter(value)
        self.noise_cov = NetworkNoiseCov(value, form='z')
 
     @property
     def cy(self):
-        return self.noise_cov.get_cy(self.y)
+        """
+        Noise covariance matrix in y-form
+
+        Returns
+        ---------
+        cy : complex :class:`numpy.ndarray` of shape `fxnxn`
+                noise covariance matrix as a function of frequency
+
+        See Also
+        ------------
+        cs
+        ct
+        cz
+        ca
+
+        """
+        ntwkNoiseCov = self.noise_cov.get_cy(self.y)
+        return ntwkNoiseCov.cc
 
     @cy.setter
     def cy(self, value):
@@ -1200,7 +1367,24 @@ class Network(object):
 
     @property
     def ca(self):
-        return self.noise_cov.get_ca(self.a)
+        """
+        Noise covariance matrix in a-form
+
+        Returns
+        ---------
+        ca : complex :class:`numpy.ndarray` of shape `fxnxn`
+                noise covariance matrix as a function of frequency
+
+        See Also
+        ------------
+        cs
+        ct
+        cy
+        cz
+
+        """
+        ntwkNoiseCov = self.noise_cov.get_ca(self.a)
+        return ntwkNoiseCov.cc
 
     @ca.setter
     def ca(self, value):
@@ -2798,9 +2982,11 @@ class Network(object):
         z_new : complex array of shape FxN, F, N or a  scalar
             new port impedances
 
-        s_def : str -> s_def : ['power','pseudo']
+        s_def : str -> s_def :  can be: 'power', 'pseudo' or 'traveling'
             Scattering parameter definition : 'power' for power-waves definition, 
-            'pseudo' for pseudo-waves definition. Default is 'power'.
+            'pseudo' for pseudo-waves definition. 
+            'traveling' corresponds to the initial implementation. 
+            Default is 'power'.
             NB: results are the same for real-valued characteristic impedances.
 
         See Also
@@ -3209,7 +3395,7 @@ class Network(object):
             Pca[l, 4 * (l + 1) - 1 - 1] = True
             Pdb[l, 4 * (l + 1) - 2 - 1] = True
             Pcb[l, 4 * (l + 1) - 1] = True
-            if Pa.shape[0] is not 0:
+            if Pa.shape[0] != 0:
                 Pa[l, 4 * p + 2 * (l + 1) - 1 - 1] = True
                 Pb[l, 4 * p + 2 * (l + 1) - 1] = True
         return npy.concatenate((Pda, Pca, Pa, Pdb, Pcb, Pb))
@@ -3555,7 +3741,7 @@ def connect(ntwkA, k, ntwkB, l, num=1):
         check_frequency_equal(ntwkA, ntwkB)
     except IndexError as e:
         common_freq = npy.intersect1d(ntwkA.frequency.f, ntwkB.frequency.f, return_indices=True)
-        if common_freq[0].size is 0:
+        if common_freq[0].size == 0:
             raise e
         else:
             ntwkA = ntwkA[common_freq[1]]
@@ -3843,7 +4029,8 @@ def cascade(ntwkA, ntwkB):
 
     Notes
     ------
-    connection diagram::
+    connection diagram:
+    ::
               A                B
            +---------+   +---------+
           -|0      N |---|0      N |-
@@ -3932,34 +4119,35 @@ def _noisy_two_port_verify(ntwkA, ntwkB):
 
 def cascade_2port(ntwkA, ntwkB, calc_noise=True):
     '''
-    cascade combination of two 2-ports Networks and handles noise
+    cascade combination of two two-ports Networks (:class:`Network`), which also combines noise covariance matrices.
 
-    Connects two 2-port Networks in cascade configuration, if noise information
+    Connects two two-port Networks in cascade configuration, if noise information
     is available, use it to determine the total covariance matrix for the combined
     system.
 
     Notes
     ------
-    For a description of the parallel-parallel two-port connection see 
+    For a description of the cascade two-port connection see 
     https://en.wikipedia.org/wiki/Two-port_network 
 
     Parameters
     -----------
     ntwkA : :class:`Network`
             network `ntwkA`
-    ntwkB : Network
+    ntwkB : :class:`Network`
             network `ntwkB`
     calc_noise : Bool
                 Set to false if no noise calculations are desired
 
     Returns
     --------
-    C : Network
-            the resultant two-port network of ntwkA parallel-parallel with ntwkB
+    C : :class:`Network`
+            the resultant two-port network of ntwkA in cascade with ntwkB
 
     See Also
     ---------
-    series_series_2port
+    :func:`series_series_2port`
+    :func:`parallel_parallel_2port`
     '''
 
     _noisy_two_port_verify(ntwkA, ntwkB)
@@ -3974,7 +4162,7 @@ def cascade_2port(ntwkA, ntwkB, calc_noise=True):
     if ntwkA.noise_cov and ntwkB.noise_cov and calc_noise:
         cta = ntwkA.ct
         ctb = ntwkB.ct
-        ctt = cta.mat_vec + npy.matmul(ta, npy.matmul(ctb.mat_vec, npy.conjugate(ta.swapaxes(1, 2))))
+        ctt = cta + npy.matmul(ta, npy.matmul(ctb, npy.conjugate(ta.swapaxes(1, 2))))
         nwk.ct = ctt
     
     return nwk
@@ -3982,9 +4170,9 @@ def cascade_2port(ntwkA, ntwkB, calc_noise=True):
 
 def parallel_parallel_2port(ntwkA, ntwkB, calc_noise=True):
     '''
-    parallel combination of two 2-ports  Networks
+    parallel combination of two two-ports  Networks (:class:`Network`), which also combines noise covariance matrices.
 
-    Connects two 2-port Networks in parallel-parallel configuration
+    Connects two two-port Networks in parallel-parallel configuration
 
     Notes
     ------
@@ -3995,19 +4183,20 @@ def parallel_parallel_2port(ntwkA, ntwkB, calc_noise=True):
     -----------
     ntwkA : :class:`Network`
             network `ntwkA`
-    ntwkB : Network
+    ntwkB : :class:`Network`
             network `ntwkB`
     calc_noise : Bool
                 Set to false if no noise calculations are desired
 
     Returns
     --------
-    C : Network
+    C : :class:`Network`
             the resultant two-port network of ntwkA parallel-parallel with ntwkB
 
     See Also
     ---------
-    series_series_2port
+    :func:`series_series_2port`
+    :func:`cascade_2port`
     '''
 
     _noisy_two_port_verify(ntwkA, ntwkB)
@@ -4020,63 +4209,60 @@ def parallel_parallel_2port(ntwkA, ntwkB, calc_noise=True):
     nwk = ntwkA.copy()
     nwk.y = yt
 
-    if ntwkA.noisy and ntwkB.noisy and calc_noise:
+    if ntwkA.noise_cov and ntwkB.noise_cov and calc_noise:
         cya = ntwkA.cy
         cyb = ntwkB.cy
         cyt = cya + cyb
-
         nwk.cy = cyt
-        nwk.noise_freq = ntwkA.noise_freq
     
     return nwk
 
 def series_series_2port(ntwkA, ntwkB, calc_noise=True):
     '''
-    series combination of two 2-ports Networks
+    series combination of two two-ports Networks (:class:`Network`), which also combines noise covariance matrices.
 
-    Connects two 2-port Networks in series-series configuration
+    Connects two two-port Networks in series-series configuration
 
     Notes
     ------
-    For a description of the series_series two-port connection see 
+    For a description of the series-series two-port connection see 
     https://en.wikipedia.org/wiki/Two-port_network 
 
     Parameters
     -----------
     ntwkA : :class:`Network`
             network `ntwkA`
-    ntwkB : Network
+    ntwkB : :class:`Network`
             network `ntwkB`
     calc_noise : Bool
                 Set to false if no noise calculations are desired
 
     Returns
     --------
-    C : Network
+    C : :class:`Network`
             the resultant two-port network of ntwkA in series-series with ntwkB
 
     See Also
     ---------
-    parallel_parallel
-    cascade
+    :func:`parallel_parallel_2port`
+    :func:`cascade_2port`
     '''
 
     _noisy_two_port_verify(ntwkA, ntwkB)
 
     za = ntwkA.z
     zb = ntwkB.z
-    zt = za + zb # not sure I can do this with np arrays
+    zt = za + zb 
 
     nwk = ntwkA.copy()
     nwk.z = zt
 
-    if ntwkA.noisy and ntwkB.noisy and calc_noise:
+    if ntwkA.noise_cov and ntwkB.noise_cov and calc_noise:
         cza = ntwkA.cz
         czb = ntwkB.cz
         czt = cza + czb
 
         nwk.cz = czt
-        nwk.noise_freq = ntwkA.noise_freq
     
     return nwk
 
@@ -4814,9 +5000,11 @@ def s2z(s, z0=50, s_def=S_DEF_DEFAULT):
         scattering parameters
     z0 : complex array-like or number
         port impedances.
-    s_def : str -> s_def : ['power','pseudo']
+    s_def : str -> s_def :  can be: 'power', 'pseudo' or 'traveling'
         Scattering parameter definition : 'power' for power-waves definition [3], 
-        'pseudo' for pseudo-waves definition [4]. Default is 'power'.
+        'pseudo' for pseudo-waves definition [4]. 
+        'traveling' corresponds to the initial implementation. 
+        Default is 'power'.
             
     Returns
     ---------
@@ -4854,6 +5042,8 @@ def s2z(s, z0=50, s_def=S_DEF_DEFAULT):
         # Power-waves. Eq.(19) from [3]
         # Creating diagonal matrices of shape (nports,nports) for each nfreqs
         F, G = npy.zeros_like(s), npy.zeros_like(s)
+        F = F.astype(dtype=npy.complex)
+        G = G.astype(dtype=npy.complex)
         npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
         npy.einsum('ijj->ij', G)[...] = z0
         # z = npy.linalg.inv(F) @ npy.linalg.inv(Id - s) @ (s @ G + npy.conjugate(G)) @ F  # Python > 3.5
@@ -4897,9 +5087,11 @@ def s2y(s, z0=50, s_def=S_DEF_DEFAULT):
         scattering parameters
     z0 : complex array-like or number
         port impedances
-    s_def : str -> s_def : ['power','pseudo']
+    s_def : str -> s_def :  can be: 'power', 'pseudo' or 'traveling'
         Scattering parameter definition : 'power' for power-waves definition [3], 
-        'pseudo' for pseudo-waves definition [4]. Default is 'power'.
+        'pseudo' for pseudo-waves definition [4]. 
+        'traveling' corresponds to the initial implementation. 
+        Default is 'power'.
 
     Returns
     ---------
@@ -4953,6 +5145,8 @@ def s2y(s, z0=50, s_def=S_DEF_DEFAULT):
         # Power-waves. Inverse of Eq.(19) from [3]
         # Creating diagonal matrices of shape (nports,nports) for each nfreqs 
         F, G = npy.zeros_like(s), npy.zeros_like(s)
+        F = F.astype(dtype=npy.complex)
+        G = G.astype(dtype=npy.complex)
         npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
         npy.einsum('ijj->ij', G)[...] = z0
         # y = npy.linalg.inv(F) @ npy.linalg.inv((s @ G + npy.conjugate(G))) @ (Id - s) @ F  # Python > 3.5
@@ -5077,9 +5271,11 @@ def z2s(z, z0=50, s_def=S_DEF_DEFAULT):
         impedance parameters
     z0 : complex array-like or number
         port impedances
-    s_def : str -> s_def : ['power','pseudo']
+    s_def : str -> s_def :  can be: 'power', 'pseudo' or 'traveling'
         Scattering parameter definition : 'power' for power-waves definition [3], 
-        'pseudo' for pseudo-waves definition [4]. Default is 'power'.
+        'pseudo' for pseudo-waves definition [4]. 
+        'traveling' corresponds to the initial implementation. 
+        Default is 'power'.
 
     Returns
     ---------
@@ -5280,8 +5476,27 @@ def a2s(a, z0=50):
     return s
 
     #return z2s(a2z(a), z0)
-    
 
+def a2t(a, z0=50):
+    '''
+    Converts abcd parameters to scattering-transfer parameters paramters [#]_ .
+
+    Parameters
+    -----------
+    a : :class:`numpy.ndarray` (shape fx2x2)
+        abcd parameter matrix
+
+    Returns
+    -------
+    t : numpy.ndarray
+        scattering-transfer parameters
+
+    References
+    -----------
+    .. [#] https://en.wikipedia.org/wiki/Two-port_network
+    '''
+    s = a2s(a, z0)
+    return s2t(s)
 
 def a2z(a):
     '''
@@ -5378,8 +5593,6 @@ def z2a(z):
 
 def s2a(s, z0=50):
     '''
-    TODO: Fix there seems to be a transpose problem
-    
     Converts scattering parameters to abcd  parameters [#]_ .
 
 
@@ -5445,9 +5658,11 @@ def y2s(y, z0=50, s_def=S_DEF_DEFAULT):
     z0 : complex array-like or number
         port impedances
 
-    s_def : str -> s_def : ['power','pseudo']
+    s_def : str -> s_def :  can be: 'power', 'pseudo' or 'traveling'
         Scattering parameter definition : 'power' for power-waves definition [3], 
-        'pseudo' for pseudo-waves definition [4]. Default is 'power'.
+        'pseudo' for pseudo-waves definition [4]. 
+        'traveling' corresponds to the initial implementation. 
+        Default is 'power'.
 
     Returns
     ---------
@@ -5497,6 +5712,8 @@ def y2s(y, z0=50, s_def=S_DEF_DEFAULT):
     if s_def == 'power':
         # Creating diagonal matrices of shape (nports,nports) for each nfreqs 
         F, G = npy.zeros_like(y), npy.zeros_like(y)
+        F = F.astype(dtype=npy.complex)
+        G = G.astype(dtype=npy.complex)
         npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
         npy.einsum('ijj->ij', G)[...] = z0
         # s = F @ (Id - npy.conjugate(G) @ y) @ npy.linalg.inv(Id + G @ y) @ npy.linalg.inv(F)  # Python > 3.5
@@ -5572,6 +5789,12 @@ def y2z(y):
     .. [#] http://en.wikipedia.org/wiki/impedance_parameters
     '''
     return npy.array([npy.mat(y[f, :, :]) ** -1 for f in xrange(y.shape[0])])
+
+def y2a(y, z0=50, s_def=S_DEF_DEFAULT):
+    ''' TODO: Calculate directly without going through s and add a2s
+    '''
+    s = y2s(y, z0, s_def)
+    return s2a(s, z0)
 
 
 def y2t(y):
@@ -5687,10 +5910,8 @@ def t2s(t):
     return s
 
 
-def t2z(t):
+def t2z(t, z0=50, s_def=S_DEF_DEFAULT):
     '''
-    Not Implemented  Yet
-
     Convert scattering transfer parameters [#]_ to impedance parameters [#]_
 
 
@@ -5729,17 +5950,15 @@ def t2z(t):
     .. [#] http://en.wikipedia.org/wiki/Scattering_transfer_parameters#Scattering_transfer_parameters
     .. [#] http://en.wikipedia.org/wiki/impedance_parameters
     '''
-    raise (NotImplementedError)
+
+    s = t2s(t)
+    return s2z(s, z0, s_def)
 
 
-def t2y(t):
+def t2y(t, z0=50, s_def=S_DEF_DEFAULT):
     '''
-    Not Implemented Yet
 
     Convert scattering transfer parameters to admittance parameters [#]_
-
-
-
 
     Parameters
     ------------
@@ -5775,7 +5994,13 @@ def t2y(t):
     .. [#] http://en.wikipedia.org/wiki/Scattering_transfer_parameters#Scattering_transfer_parameters
 
     '''
-    raise (NotImplementedError)
+    s = t2s(t)
+    return s2y(s, z0, s_def)
+
+def t2a(t, z0=50):
+
+    s = t2s(t)
+    return s2a(s, z0)
 
 
 def h2z(h):
@@ -6030,9 +6255,11 @@ def renormalize_s(s, z_old, z_new, s_def=S_DEF_DEFAULT):
     z_new : complex array of shape FxN, F, N or a scalar
         new port impedances
 
-    s_def : str -> s_def : ['power','pseudo']
+    s_def : str -> s_def :  can be: 'power', 'pseudo' or 'traveling'
         Scattering parameter definition : 'power' for power-waves definition, 
-        'pseudo' for pseudo-waves definition. Default is 'power'.
+        'pseudo' for pseudo-waves definition. 
+        'traveling' corresponds to the initial implementation. 
+        Default is 'power'.
         NB: results are the same for real-valued characteristic impedances.
 
     Notes

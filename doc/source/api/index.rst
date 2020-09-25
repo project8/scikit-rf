@@ -11,9 +11,11 @@ API
     network
     networkSet
     circuit
+    
+    networkNoiseCov
+    multiNetworkSystem
 
     plotting
-    time
     mathFunctions
     tlineFunctions
     constants
@@ -22,5 +24,6 @@ API
     io/index
     calibration/index
     media/index
+    media/device
     vi/index
 
