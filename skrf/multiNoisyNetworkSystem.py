@@ -360,9 +360,9 @@ class MultiNoisyNetworkSystem(object):
 
     def _create_block_diagonal_matrices_and_gamma(self):
 
-        self.sdiag = npy.zeros((self.n_freqs, self.n_ports_total, self.n_ports_total), dtype=npy.complex)
-        self.cdiag = npy.zeros((self.n_freqs, self.n_ports_total, self.n_ports_total), dtype=npy.complex)
-        self.gamma = npy.zeros((self.n_freqs, self.n_ports_total, self.n_ports_total), dtype=npy.complex)
+        self.sdiag = npy.zeros((self.n_freqs, self.n_ports_total, self.n_ports_total), dtype=complex)
+        self.cdiag = npy.zeros((self.n_freqs, self.n_ports_total, self.n_ports_total), dtype=complex)
+        self.gamma = npy.zeros((self.n_freqs, self.n_ports_total, self.n_ports_total), dtype=complex)
         ovec = npy.ones(self.n_freqs)
 
         self.con_map = {}
@@ -409,12 +409,12 @@ class MultiNoisyNetworkSystem(object):
 
         ri_single = npy.delete(Identity, self.port_ext_idx, axis=0)
 
-        self.re = npy.array([re_single]*self.n_freqs, dtype=npy.complex)
+        self.re = npy.array([re_single]*self.n_freqs, dtype=complex)
 
         #print(self.port_ext_idx)
         #print(npy.real(self.re[0,:,:]))
 
-        self.ri = npy.array([ri_single]*self.n_freqs, dtype=npy.complex)
+        self.ri = npy.array([ri_single]*self.n_freqs, dtype=complex)
 
 
 

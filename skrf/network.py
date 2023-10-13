@@ -3113,12 +3113,12 @@ class Network(object):
     def _P(self, p):  # (27) (28)
         n = self.nports
 
-        Pda = npy.zeros((p, 2 * n), dtype=npy.bool)
-        Pdb = npy.zeros((p, 2 * n), dtype=npy.bool)
-        Pca = npy.zeros((p, 2 * n), dtype=npy.bool)
-        Pcb = npy.zeros((p, 2 * n), dtype=npy.bool)
-        Pa = npy.zeros((n - 2 * p, 2 * n), dtype=npy.bool)
-        Pb = npy.zeros((n - 2 * p, 2 * n), dtype=npy.bool)
+        Pda = npy.zeros((p, 2 * n), dtype=bool)
+        Pdb = npy.zeros((p, 2 * n), dtype=bool)
+        Pca = npy.zeros((p, 2 * n), dtype=bool)
+        Pcb = npy.zeros((p, 2 * n), dtype=bool)
+        Pa = npy.zeros((n - 2 * p, 2 * n), dtype=bool)
+        Pb = npy.zeros((n - 2 * p, 2 * n), dtype=bool)
         for l in npy.arange(p):
             Pda[l, 4 * (l + 1) - 3 - 1] = True
             Pca[l, 4 * (l + 1) - 1 - 1] = True
@@ -3132,8 +3132,8 @@ class Network(object):
     def _Q(self):  # (29) error corrected
         n = self.nports
 
-        Qa = npy.zeros((n, 2 * n), dtype=npy.bool)
-        Qb = npy.zeros((n, 2 * n), dtype=npy.bool)
+        Qa = npy.zeros((n, 2 * n), dtype=bool)
+        Qb = npy.zeros((n, 2 * n), dtype=bool)
         for l in npy.arange(n):
             Qa[l, 2 * (l + 1) - 1 - 1] = True
             Qb[l, 2 * (l + 1) - 1] = True
@@ -4583,7 +4583,7 @@ def s2z(s, z0=50, s_def=S_DEF_DEFAULT):
    
     # Add a small real part in case of pure imaginary char impedance
     # to prevent numerical errors for both pseudo and power waves definitions
-    z0 = z0.astype(dtype=npy.complex)
+    z0 = z0.astype(dtype=complex)
     z0[z0.real == 0] += ZERO  
 
     s = s.copy()  # to prevent the original array from being altered
@@ -4598,7 +4598,7 @@ def s2z(s, z0=50, s_def=S_DEF_DEFAULT):
     if s_def == 'power':    
         # Power-waves. Eq.(19) from [3]
         # Creating diagonal matrices of shape (nports,nports) for each nfreqs
-        F, G = npy.zeros_like(s, dtype=npy.complex), npy.zeros_like(s, dtype=npy.complex)
+        F, G = npy.zeros_like(s, dtype=complex), npy.zeros_like(s, dtype=complex)
         npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
         npy.einsum('ijj->ij', G)[...] = z0
         # z = npy.linalg.inv(F) @ npy.linalg.inv(Id - s) @ (s @ G + npy.conjugate(G)) @ F  # Python > 3.5
@@ -4684,7 +4684,7 @@ def s2y(s, z0=50, s_def=S_DEF_DEFAULT):
 
     # Add a small real part in case of pure imaginary char impedance
     # to prevent numerical errors for both pseudo and power waves definitions
-    z0 = z0.astype(dtype=npy.complex)
+    z0 = z0.astype(dtype=complex)
     z0[z0.real == 0] += ZERO  
 
     s = s.copy()  # to prevent the original array from being altered
@@ -4699,7 +4699,7 @@ def s2y(s, z0=50, s_def=S_DEF_DEFAULT):
     if s_def == 'power':
         # Power-waves. Inverse of Eq.(19) from [3]
         # Creating diagonal matrices of shape (nports,nports) for each nfreqs 
-        F, G = npy.zeros_like(s, dtype=npy.complex), npy.zeros_like(s, dtype=npy.complex)
+        F, G = npy.zeros_like(s, dtype=complex), npy.zeros_like(s, dtype=complex)
         npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
         npy.einsum('ijj->ij', G)[...] = z0
         # y = npy.linalg.inv(F) @ npy.linalg.inv((s @ G + npy.conjugate(G))) @ (Id - s) @ F  # Python > 3.5
@@ -4850,7 +4850,7 @@ def z2s(z, z0=50, s_def=S_DEF_DEFAULT):
 
     # Add a small real part in case of pure imaginary char impedance
     # to prevent numerical errors for both pseudo and power waves definitions
-    z0 = z0.astype(dtype=npy.complex)
+    z0 = z0.astype(dtype=complex)
     z0[z0.real == 0] += ZERO    
 
     if s_def == 'power':
@@ -5252,7 +5252,7 @@ def y2s(y, z0=50, s_def=S_DEF_DEFAULT):
 
     # Add a small real part in case of pure imaginary char impedance
     # to prevent numerical errors for both pseudo and power waves definitions
-    z0 = z0.astype(dtype=npy.complex)
+    z0 = z0.astype(dtype=complex)
     z0[z0.real == 0] += ZERO  
 
     # The following is a vectorized version of a for loop for all frequencies.        
@@ -5262,7 +5262,7 @@ def y2s(y, z0=50, s_def=S_DEF_DEFAULT):
         
     if s_def == 'power':
         # Creating diagonal matrices of shape (nports,nports) for each nfreqs 
-        F, G = npy.zeros_like(y, dtype=npy.complex), npy.zeros_like(y, dtype=npy.complex)
+        F, G = npy.zeros_like(y, dtype=complex), npy.zeros_like(y, dtype=complex)
         npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
         npy.einsum('ijj->ij', G)[...] = z0
         # s = F @ (Id - npy.conjugate(G) @ y) @ npy.linalg.inv(Id + G @ y) @ npy.linalg.inv(F)  # Python > 3.5

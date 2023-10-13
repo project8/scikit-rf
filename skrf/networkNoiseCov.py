@@ -952,7 +952,7 @@ class NetworkNoiseCov(object):
 
         # Add a small real part in case of pure imaginary char impedance
         # to prevent numerical errors for both pseudo and power waves definitions
-        z0 = z0.astype(dtype=npy.complex)
+        z0 = z0.astype(dtype=complex)
         z0[z0.real == 0] += ZERO    
 
         if s_def == 'power':
@@ -1105,7 +1105,7 @@ class NetworkNoiseCov(object):
     
         # Add a small real part in case of pure imaginary char impedance
         # to prevent numerical errors for both pseudo and power waves definitions
-        z0 = z0.astype(dtype=npy.complex)
+        z0 = z0.astype(dtype=complex)
         z0[z0.real == 0] += ZERO  
 
         s = s.copy()  # to prevent the original array from being altered
@@ -1121,8 +1121,8 @@ class NetworkNoiseCov(object):
             # Power-waves. Eq.(19) from [3]
             # Creating diagonal matrices of shape (nports,nports) for each nfreqs
             F, G = npy.zeros_like(s), npy.zeros_like(s)
-            F = F.astype(dtype=npy.complex)
-            G = G.astype(dtype=npy.complex)
+            F = F.astype(dtype=complex)
+            G = G.astype(dtype=complex)
             npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
             npy.einsum('ijj->ij', G)[...] = z0
             # z = npy.linalg.inv(F) @ npy.linalg.inv(Id - s) @ (s @ G + npy.conjugate(G)) @ F  # Python > 3.5
@@ -1292,7 +1292,7 @@ class NetworkNoiseCov(object):
 
         # Add a small real part in case of pure imaginary char impedance
         # to prevent numerical errors for both pseudo and power waves definitions
-        z0 = z0.astype(dtype=npy.complex)
+        z0 = z0.astype(dtype=complex)
         z0[z0.real == 0] += ZERO  
 
         # The following is a vectorized version of a for loop for all frequencies.        
@@ -1303,8 +1303,8 @@ class NetworkNoiseCov(object):
         if s_def == 'power':
             # Creating diagonal matrices of shape (nports,nports) for each nfreqs 
             F, G = npy.zeros_like(y), npy.zeros_like(y)
-            F = F.astype(dtype=npy.complex)
-            G = G.astype(dtype=npy.complex)
+            F = F.astype(dtype=complex)
+            G = G.astype(dtype=complex)
             npy.einsum('ijj->ij', F)[...] = 1.0/npy.sqrt(z0.real)*0.5
             npy.einsum('ijj->ij', G)[...] = z0
             # s = F @ (Id - npy.conjugate(G) @ y) @ npy.linalg.inv(Id + G @ y) @ npy.linalg.inv(F)  # Python > 3.5
