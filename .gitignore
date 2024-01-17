@@ -19,4 +19,5 @@ qtapps/sandbox*
 
 # Exclude mac DS store files
 .DS_Store
+**/.DS_Store
 
