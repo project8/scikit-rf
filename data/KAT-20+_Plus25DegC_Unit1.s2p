@@ -4,7 +4,7 @@
 !Type: MMIC ATTENUATOR
 !MODEL: KAT-20+
 !S/N: U1_+25C
-!TEST CONDITIONS: Z:50 OHM SYSTEM, INPUT POWER = 0dBm, TEMP:+25°C
+!TEST CONDITIONS: Z:50 OHM SYSTEM, INPUT POWER = 0dBm, TEMP:+25ï¿½C
 !REMARK: KAT-20+ is on TB-934-20C+. 2.4MM Two Port Calibration, N4693A, S/N 12931. Thru-Line on: TB-934-20C+
 !	 Expansion and contraction of cables inside the oven not accounted for.
 !TESTED ON: NETWORK ANALYZER MODEL AG N5242A S/N 74837 CAL DUE DATE 11/02/18
