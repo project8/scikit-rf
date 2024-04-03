@@ -250,7 +250,6 @@ def getData(h5_file, log_ch):
     trace = np.empty((getXdim(h5_file, log_ch), getNumberOfEntries(h5_file)))
     h5_file["Traces"][log_ch].read_direct(trace, source_sel=np.s_[:, 0, :])
     if is_complex:
-        print("Complex data found.")
         trace_c = np.empty((getXdim(h5_file, log_ch), getNumberOfEntries(h5_file)))
         h5_file["Traces"][log_ch].read_direct(trace_c, source_sel=np.s_[:, 1, :])
         trace = trace.astype(complex) + trace_c * 1j
